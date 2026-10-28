@@ -1,0 +1,854 @@
+<!DOCTYPE html>
+<html lang="ko" class="h-full bg-slate-900 text-slate-100">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SecuGuard - 오픈소스 라이브러리 보안 점검기</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f0fdf4',
+                            500: '#22c55e',
+                            600: '#16a34a',
+                            700: '#15803d',
+                            900: '#14532d',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0f172a;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #334155;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #475569;
+        }
+    </style>
+</head>
+<body class="h-full flex flex-col">
+
+    <!-- Top Navigation Header -->
+    <header class="border-b border-slate-800 bg-slate-950/80 backdrop-blur sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16">
+                <!-- Logo & Brand -->
+                <div class="flex items-center space-x-3">
+                    <div class="bg-emerald-500/10 p-2 rounded-xl border border-emerald-500/30 text-emerald-400">
+                        <i class="fa-solid fa-shield-halved text-2xl"></i>
+                    </div>
+                    <div>
+                        <span class="text-xl font-bold tracking-tight text-white flex items-center gap-2">
+                            SecuGuard <span class="text-xs font-semibold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">v1.2 Live Scanner</span>
+                        </span>
+                        <p class="text-xs text-slate-400 hidden sm:block">오픈소스 라이브러리 보안 취약점 및 라이선스 실시간 점검기</p>
+                    </div>
+                </div>
+
+                <!-- Quick Actions & Info -->
+                <div class="flex items-center space-x-4">
+                    <button onclick="loadSample('package.json')" class="text-xs sm:text-sm px-3 py-1.5 rounded-lg border border-slate-700 hover:border-slate-500 bg-slate-800 text-slate-300 hover:text-white transition">
+                        <i class="fa-solid fa-code text-emerald-400 mr-1.5"></i> sample package.json
+                    </button>
+                    <button onclick="loadSample('requirements.txt')" class="text-xs sm:text-sm px-3 py-1.5 rounded-lg border border-slate-700 hover:border-slate-500 bg-slate-800 text-slate-300 hover:text-white transition">
+                        <i class="fa-brands fa-python text-blue-400 mr-1.5"></i> sample requirements.txt
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 flex flex-col gap-6">
+
+        <!-- Hero & Upload Area -->
+        <section class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- Left: Dropzone -->
+            <div class="lg:col-span-2 bg-slate-800/50 border border-slate-700/70 rounded-2xl p-6 flex flex-col justify-between hover:border-slate-600 transition">
+                <div>
+                    <h2 class="text-lg font-semibold text-white flex items-center gap-2 mb-1">
+                        <i class="fa-solid fa-file-arrow-up text-emerald-400"></i> 의존성 파일 분석 시작
+                    </h2>
+                    <p class="text-xs sm:text-sm text-slate-400 mb-4">
+                        프로젝트의 <code>package.json</code> (Node.js) 또는 <code>requirements.txt</code> (Python) 파일 내용을 업로드하거나 붙여넣으세요.
+                    </p>
+
+                    <!-- Drop area -->
+                    <div id="drop-zone" class="border-2 border-dashed border-slate-600 hover:border-emerald-500 bg-slate-900/50 rounded-xl p-6 text-center transition cursor-pointer relative">
+                        <input type="file" id="file-input" class="hidden" accept=".json,.txt" />
+                        <div class="flex flex-col items-center justify-center space-y-2">
+                            <div class="w-12 h-12 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-emerald-400">
+                                <i class="fa-solid fa-cloud-arrow-up text-xl"></i>
+                            </div>
+                            <p class="text-sm font-medium text-slate-200">
+                                클릭하여 파일 선택 또는 드래그 & 드롭
+                            </p>
+                            <p class="text-xs text-slate-400">지원 형식: package.json, requirements.txt</p>
+                        </div>
+                    </div>
+
+                    <!-- Direct Textarea option -->
+                    <div class="mt-4">
+                        <div class="flex justify-between items-center mb-1">
+                            <label for="raw-code" class="text-xs font-semibold text-slate-400 uppercase tracking-wider">직접 코드 붙여넣기</label>
+                            <span id="format-badge" class="text-xs font-mono text-emerald-400 hidden">감지됨: <span id="detected-format">-</span></span>
+                        </div>
+                        <textarea id="raw-code" rows="4" placeholder="여기에 package.json 데이터나 requirements.txt 내용을 직접 붙여넣으세요..." class="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-xs font-mono text-slate-200 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition resize-none"></textarea>
+                    </div>
+                </div>
+
+                <div class="mt-4 flex justify-end gap-3">
+                    <button onclick="resetAnalyzer()" class="px-4 py-2 text-xs font-medium text-slate-400 hover:text-white transition">
+                        초기화
+                    </button>
+                    <button onclick="runAnalysis()" class="px-6 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs sm:text-sm font-medium rounded-xl shadow-lg shadow-emerald-600/20 flex items-center gap-2 transition">
+                        <i class="fa-solid fa-magnifying-glass font-bold"></i> 취약점 및 라이선스 분석 실행
+                    </button>
+                </div>
+            </div>
+
+            <!-- Right: Overview Quick Stats -->
+            <div class="bg-slate-800/50 border border-slate-700/70 rounded-2xl p-6 flex flex-col justify-between">
+                <div>
+                    <h2 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                        <i class="fa-solid fa-chart-pie text-emerald-400"></i> 보안 요약 리포트
+                    </h2>
+
+                    <div id="stats-placeholder" class="py-12 text-center text-slate-500">
+                        <i class="fa-solid fa-shield-cat text-4xl mb-3 block text-slate-600"></i>
+                        의존성 파일을 업로드하고 진단을 시작하세요.
+                    </div>
+
+                    <div id="stats-container" class="hidden space-y-4">
+                        <!-- Score badge -->
+                        <div class="bg-slate-900 p-4 rounded-xl border border-slate-700 flex items-center justify-between">
+                            <div>
+                                <span class="text-xs text-slate-400 uppercase tracking-wider font-semibold">보안 안전점수</span>
+                                <div id="health-score" class="text-3xl font-extrabold text-emerald-400 mt-1">--/100</div>
+                            </div>
+                            <div id="health-icon" class="text-3xl text-emerald-400">
+                                <i class="fa-solid fa-shield-check"></i>
+                            </div>
+                        </div>
+
+                        <!-- Mini metrics -->
+                        <div class="grid grid-cols-2 gap-3">
+                            <div class="bg-slate-900/70 p-3 rounded-xl border border-slate-800">
+                                <span class="text-xs text-slate-400 block">총 분석 라이브러리</span>
+                                <span id="stat-total" class="text-lg font-bold text-white">0</span>
+                            </div>
+                            <div class="bg-slate-900/70 p-3 rounded-xl border border-red-900/40">
+                                <span class="text-xs text-red-400 block">고위험 취약점</span>
+                                <span id="stat-critical" class="text-lg font-bold text-red-400">0</span>
+                            </div>
+                            <div class="bg-slate-900/70 p-3 rounded-xl border border-amber-900/40">
+                                <span class="text-xs text-amber-400 block">업데이트 필요</span>
+                                <span id="stat-outdated" class="text-lg font-bold text-amber-400">0</span>
+                            </div>
+                            <div class="bg-slate-900/70 p-3 rounded-xl border border-purple-900/40">
+                                <span class="text-xs text-purple-400 block">라이선스 주의</span>
+                                <span id="stat-license" class="text-lg font-bold text-purple-400">0</span>
+                            </div>
+                        </div>
+
+                        <!-- Donut Chart -->
+                        <div class="relative h-36 w-full flex justify-center items-center pt-2">
+                            <canvas id="riskChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Export Report Button -->
+                <div id="export-action-container" class="hidden pt-4 border-t border-slate-700/50">
+                    <button onclick="downloadReport()" class="w-full py-2 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition">
+                        <i class="fa-solid fa-file-pdf text-red-400"></i> 검사 리포트 다운로드 (JSON)
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Dynamic Results Section -->
+        <section id="results-section" class="hidden flex-1 flex flex-col gap-6">
+            
+            <!-- Filters & Tabs -->
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-800 pb-4">
+                <div class="flex space-x-2 border-b border-slate-800 sm:border-0 w-full sm:w-auto">
+                    <button id="tab-all" onclick="filterResults('all')" class="px-4 py-2 text-xs sm:text-sm font-medium rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                        전체 목록 (<span id="count-all">0</span>)
+                    </button>
+                    <button id="tab-vuln" onclick="filterResults('vuln')" class="px-4 py-2 text-xs sm:text-sm font-medium rounded-lg text-slate-400 hover:bg-slate-800 transition">
+                        보안 취약점 (<span id="count-vuln">0</span>)
+                    </button>
+                    <button id="tab-license" onclick="filterResults('license')" class="px-4 py-2 text-xs sm:text-sm font-medium rounded-lg text-slate-400 hover:bg-slate-800 transition">
+                        라이선스 이슈 (<span id="count-license">0</span>)
+                    </button>
+                </div>
+
+                <div class="flex items-center gap-2 w-full sm:w-auto">
+                    <div class="relative flex-1 sm:w-64">
+                        <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-xs text-slate-500"></i>
+                        <input type="text" id="search-input" onkeyup="searchPackages()" placeholder="패키지명 검색..." class="w-full bg-slate-800 border border-slate-700 rounded-xl pl-8 pr-4 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-emerald-500">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Table Card -->
+            <div class="bg-slate-800/40 border border-slate-700/70 rounded-2xl overflow-hidden shadow-xl">
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-xs sm:text-sm">
+                        <thead class="bg-slate-900/80 text-slate-400 uppercase tracking-wider text-[11px] font-semibold border-b border-slate-700">
+                            <tr>
+                                <th class="py-3.5 px-4">패키지명</th>
+                                <th class="py-3.5 px-4">사용 버전</th>
+                                <th class="py-3.5 px-4">최신 권장 버전</th>
+                                <th class="py-3.5 px-4">보안 위험도 (CVE)</th>
+                                <th class="py-3.5 px-4">라이선스</th>
+                                <th class="py-3.5 px-4">대체 라이브러리 및 조치 권고</th>
+                            </tr>
+                        </thead>
+                        <tbody id="package-table-body" class="divide-y divide-slate-800 text-slate-300">
+                            <!-- JS injected rows -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Detailed Modal -->
+    <div id="detail-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm hidden p-4">
+        <div class="bg-slate-900 border border-slate-700 rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl p-6">
+            <div class="flex justify-between items-start border-b border-slate-800 pb-4">
+                <div>
+                    <h3 id="modal-title" class="text-xl font-bold text-white flex items-center gap-2"></h3>
+                    <p id="modal-subtitle" class="text-xs text-slate-400 font-mono mt-1"></p>
+                </div>
+                <button onclick="closeModal()" class="text-slate-400 hover:text-white p-2">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+
+            <div id="modal-content" class="py-4 space-y-4 text-xs sm:text-sm">
+                <!-- Injected via JS -->
+            </div>
+
+            <div class="border-t border-slate-800 pt-4 flex justify-end">
+                <button onclick="closeModal()" class="px-5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold">닫기</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notification Toast -->
+    <div id="toast" class="fixed bottom-6 right-6 z-50 transition-all duration-300 transform translate-y-20 opacity-0 pointer-events-none">
+        <div class="bg-emerald-600 text-white px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3 border border-emerald-400/40">
+            <i class="fa-solid fa-circle-check text-lg"></i>
+            <span id="toast-message" class="text-xs sm:text-sm font-medium">알림 메세지</span>
+        </div>
+    </div>
+
+    <!-- JavaScript Logic -->
+    <script>
+        // --- Mock Security & License Database ---
+        const VULN_DATABASE = {
+            // NPM Ecosystem
+            "lodash": {
+                cve: "CVE-2021-23337",
+                severity: "CRITICAL",
+                score: 9.8,
+                latest: "4.17.21",
+                license: "MIT",
+                licenseRisk: "LOW",
+                desc: "Command Injection in lodash package via template function.",
+                action: "버전 4.17.21 이상으로 업데이트하세요.",
+                alternative: "ES6 Native 함수(Array.prototype.map 등) 또는 Radash 활용"
+            },
+            "axios": {
+                cve: "CVE-2023-45857",
+                severity: "HIGH",
+                score: 7.5,
+                latest: "1.7.4",
+                license: "MIT",
+                licenseRisk: "LOW",
+                desc: "XSRF-TOKEN 탈취 및 SSRF 취약점 발견.",
+                action: "버전 1.7.4 이상으로 업데이트 권장.",
+                alternative: "원인 해결을 위해 Fetch API 또는 Ky 라이브러리 전환 고려"
+            },
+            "express": {
+                cve: "CVE-2024-21500",
+                severity: "MEDIUM",
+                score: 5.3,
+                latest: "4.19.2",
+                license: "MIT",
+                licenseRisk: "LOW",
+                desc: "조작된 헤더 전송 시 Denial of Service (DoS) 유발 가능.",
+                action: " 최신 패치 버전 4.19.2 이상으로 업데이트 필요.",
+                alternative: "Fastify, Hono (성능 및 보안 개선)"
+            },
+            "moment": {
+                cve: "CVE-2022-31129",
+                severity: "HIGH",
+                score: 7.5,
+                latest: "2.30.1",
+                license: "MIT",
+                licenseRisk: "LOW",
+                desc: "비효율적 정규식 매칭을 통한 ReDoS 공격 가능성 (더 이상 신규 개발되지 않는 레거시 라이브러리).",
+                action: "프로젝트 경량화 및 보안 유지를 위해 대체 라이브러리로 이관 권장.",
+                alternative: "date-fns, Day.js, 또는 Temporal API"
+            },
+            "jsonwebtoken": {
+                cve: "CVE-2022-23529",
+                severity: "HIGH",
+                score: 7.6,
+                latest: "9.0.2",
+                license: "MIT",
+                licenseRisk: "LOW",
+                desc: "검증되지 않은 비밀키 입력을 통한 임의 코드 실행 위험.",
+                action: "버전 9.0.0 이상으로 업그레이드 필요.",
+                alternative: "jose (Modern Web Crypto API 지원)"
+            },
+            "react": {
+                cve: "NONE",
+                severity: "SAFE",
+                score: 0.0,
+                latest: "18.3.1",
+                license: "MIT",
+                licenseRisk: "LOW",
+                desc: "알려진 치명적 취약점 없음.",
+                action: "최신 안정 버전을 유지 중입니다.",
+                alternative: "N/A"
+            },
+            "vue": {
+                cve: "NONE",
+                severity: "SAFE",
+                score: 0.0,
+                latest: "3.4.31",
+                license: "MIT",
+                licenseRisk: "LOW",
+                desc: "알려진 보안 이슈 없음.",
+                action: "안전함.",
+                alternative: "N/A"
+            },
+
+            // Python Ecosystem
+            "django": {
+                cve: "CVE-2024-38875",
+                severity: "HIGH",
+                score: 7.5,
+                latest: "5.0.7",
+                license: "BSD-3-Clause",
+                licenseRisk: "LOW",
+                desc: "URLValidator 사용 시 Denial of Service (ReDoS) 취약점 발생.",
+                action: "5.0.7 버전으로 긴급 업데이트 필요.",
+                alternative: "FastAPI, Flask"
+            },
+            "requests": {
+                cve: "CVE-2023-32681",
+                severity: "MEDIUM",
+                score: 6.1,
+                latest: "2.32.3",
+                license: "Apache-2.0",
+                licenseRisk: "LOW",
+                desc: "HTTPS에서 HTTP 요청으로 리다이렉트 시 Authorization 헤더 누출.",
+                action: "2.31.0 이상 버전으로 업데이트.",
+                alternative: "httpx (비동기 지원)"
+            },
+            "gunicorn": {
+                cve: "CVE-2024-1135",
+                severity: "HIGH",
+                score: 7.5,
+                latest: "22.0.0",
+                license: "MIT",
+                licenseRisk: "LOW",
+                desc: "HTTP Request Smuggling 취약점 존재.",
+                action: "gunicorn 22.0.0 버전으로 전면 교체.",
+                alternative: "Uvicorn, Granian"
+            },
+            "pygpl-tool": {
+                cve: "NONE",
+                severity: "SAFE",
+                score: 0.0,
+                latest: "1.0.0",
+                license: "GPL-3.0",
+                licenseRisk: "HIGH",
+                desc: "전염성 강력한 GPL-3.0 라이선스로, 해당 소스코드 전체를 공개해야 하는 강력한 법적 위험이 존재함.",
+                action: "상용 서비스 배포 전 법무 검토 필수 또는 MIT/Apache 라이선스 라이브러리로 대체.",
+                alternative: "MIT/Apache 라이선스 기반의 패키지 검색"
+            },
+            "celery": {
+                cve: "CVE-2021-4155",
+                severity: "MEDIUM",
+                score: 5.5,
+                latest: "5.4.0",
+                license: "BSD-3-Clause",
+                licenseRisk: "LOW",
+                desc: "스케줄러 작업 처리 중 리소스 제한 미흡.",
+                action: "5.3.0 이상 업데이트 권장.",
+                alternative: "Dramatiq, RQ"
+            }
+        };
+
+        // Sample Files
+        const SAMPLE_PACKAGE_JSON = `{
+  "name": "my-web-app",
+  "version": "1.0.0",
+  "dependencies": {
+    "react": "17.0.2",
+    "lodash": "4.17.15",
+    "axios": "0.21.1",
+    "express": "4.16.0",
+    "moment": "2.29.1",
+    "jsonwebtoken": "8.5.1"
+  }
+}`;
+
+        const SAMPLE_REQUIREMENTS_TXT = `django==3.2.5
+requests==2.25.1
+gunicorn==20.0.4
+pygpl-tool==0.9.0
+celery==4.4.0`;
+
+        // State Global Variable
+        let currentAnalysisResults = [];
+        let activeFilter = 'all';
+        let chartInstance = null;
+
+        // --- Initialization ---
+        window.onload = function() {
+            setupDragAndDrop();
+        };
+
+        function setupDragAndDrop() {
+            const dropZone = document.getElementById('drop-zone');
+            const fileInput = document.getElementById('file-input');
+
+            dropZone.addEventListener('click', () => fileInput.click());
+
+            dropZone.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                dropZone.classList.add('border-emerald-500', 'bg-slate-800/80');
+            });
+
+            dropZone.addEventListener('dragleave', () => {
+                dropZone.classList.remove('border-emerald-500', 'bg-slate-800/80');
+            });
+
+            dropZone.addEventListener('drop', (e) => {
+                e.preventDefault();
+                dropZone.classList.remove('border-emerald-500', 'bg-slate-800/80');
+                if (e.dataTransfer.files.length) {
+                    handleFile(e.dataTransfer.files[0]);
+                }
+            });
+
+            fileInput.addEventListener('change', (e) => {
+                if (e.target.files.length) {
+                    handleFile(e.target.files[0]);
+                }
+            });
+
+            document.getElementById('raw-code').addEventListener('input', (e) => {
+                detectFormat(e.target.value);
+            });
+        }
+
+        function loadSample(type) {
+            const rawArea = document.getElementById('raw-code');
+            if (type === 'package.json') {
+                rawArea.value = SAMPLE_PACKAGE_JSON;
+            } else {
+                rawArea.value = SAMPLE_REQUIREMENTS_TXT;
+            }
+            detectFormat(rawArea.value);
+            showToast(`${type} 샘플 데이터가 로드되었습니다.`);
+        }
+
+        function handleFile(file) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                document.getElementById('raw-code').value = e.target.result;
+                detectFormat(e.target.result);
+                showToast(`'${file.name}' 파일 업로드 완료!`);
+            };
+            reader.readAsText(file);
+        }
+
+        function detectFormat(text) {
+            const badge = document.getElementById('format-badge');
+            const formatSpan = document.getElementById('detected-format');
+            text = text.trim();
+            
+            if (text.startsWith('{')) {
+                badge.classList.remove('hidden');
+                formatSpan.textContent = 'Node.js (package.json)';
+            } else if (text.length > 0) {
+                badge.classList.remove('hidden');
+                formatSpan.textContent = 'Python (requirements.txt)';
+            } else {
+                badge.classList.add('hidden');
+            }
+        }
+
+        function resetAnalyzer() {
+            document.getElementById('raw-code').value = '';
+            document.getElementById('format-badge').classList.add('hidden');
+            document.getElementById('results-section').classList.add('hidden');
+            document.getElementById('stats-container').classList.add('hidden');
+            document.getElementById('stats-placeholder').classList.remove('hidden');
+            document.getElementById('export-action-container').classList.add('hidden');
+            currentAnalysisResults = [];
+            showToast('초기화 되었습니다.');
+        }
+
+        // --- Core Parsing & Analysis Engine ---
+        function runAnalysis() {
+            const rawText = document.getElementById('raw-code').value.trim();
+
+            if (!rawText) {
+                showToast('분석할 의존성 파일 내용 또는 코드를 입력해주세요!');
+                return;
+            }
+
+            let dependencies = {};
+
+            // Parse package.json vs requirements.txt
+            try {
+                if (rawText.startsWith('{')) {
+                    const parsed = JSON.parse(rawText);
+                    dependencies = { ...parsed.dependencies, ...parsed.devDependencies };
+                } else {
+                    const lines = rawText.split('\n');
+                    lines.forEach(line => {
+                        const clean = line.trim();
+                        if (clean && !clean.startsWith('#')) {
+                            const parts = clean.split(/==|>=|<=|~/);
+                            const name = parts[0].trim().toLowerCase();
+                            const version = parts[1] ? parts[1].trim() : "알수없음";
+                            if (name) dependencies[name] = version;
+                        }
+                    });
+                }
+            } catch (e) {
+                showToast('형식 분석 오류: JSON 구문을 확인하세요.');
+                return;
+            }
+
+            const packageNames = Object.keys(dependencies);
+            if (packageNames.length === 0) {
+                showToast('인식 가능한 라이브러리 목록이 존재하지 않습니다.');
+                return;
+            }
+
+            // Perform Vulnerability Lookup
+            currentAnalysisResults = packageNames.map(name => {
+                const installedVersion = dependencies[name].replace(/[\^~]/g, '');
+                const matched = VULN_DATABASE[name.toLowerCase()];
+
+                if (matched) {
+                    return {
+                        name: name,
+                        installed: installedVersion,
+                        latest: matched.latest,
+                        cve: matched.cve,
+                        severity: matched.severity,
+                        score: matched.score,
+                        license: matched.license,
+                        licenseRisk: matched.licenseRisk,
+                        desc: matched.desc,
+                        action: matched.action,
+                        alternative: matched.alternative
+                    };
+                } else {
+                    // Default Fallback Generator for unregistered packages
+                    return {
+                        name: name,
+                        installed: installedVersion,
+                        latest: installedVersion,
+                        cve: "NONE",
+                        severity: "SAFE",
+                        score: 0.0,
+                        license: "MIT",
+                        licenseRisk: "LOW",
+                        desc: "알려진 심각한 보안 이슈 없음.",
+                        action: "현재 설치된 최신 버전을 유지 중입니다.",
+                        alternative: "N/A"
+                    };
+                }
+            });
+
+            // Update UI Displays
+            renderStats();
+            renderTable();
+            document.getElementById('results-section').classList.remove('hidden');
+            document.getElementById('stats-placeholder').classList.add('hidden');
+            document.getElementById('stats-container').classList.remove('hidden');
+            document.getElementById('export-action-container').classList.remove('hidden');
+
+            showToast(`총 ${currentAnalysisResults.length}개의 라이브러리 검출 및 검사 완료!`);
+        }
+
+        // --- Render UI Components ---
+        function renderStats() {
+            const total = currentAnalysisResults.length;
+            const criticals = currentAnalysisResults.filter(r => r.severity === 'CRITICAL' || r.severity === 'HIGH').length;
+            const outdated = currentAnalysisResults.filter(r => r.installed !== r.latest).length;
+            const licenseRisks = currentAnalysisResults.filter(r => r.licenseRisk === 'HIGH').length;
+
+            document.getElementById('stat-total').textContent = total;
+            document.getElementById('stat-critical').textContent = criticals;
+            document.getElementById('stat-outdated').textContent = outdated;
+            document.getElementById('stat-license').textContent = licenseRisks;
+
+            // Health score formula calculation
+            let penalty = (criticals * 25) + (licenseRisks * 20) + (outdated * 5);
+            let score = Math.max(0, 100 - penalty);
+
+            const scoreElem = document.getElementById('health-score');
+            const iconElem = document.getElementById('health-icon');
+
+            scoreElem.textContent = `${score}/100`;
+
+            if (score >= 85) {
+                scoreElem.className = "text-3xl font-extrabold text-emerald-400 mt-1";
+                iconElem.className = "text-3xl text-emerald-400";
+                iconElem.innerHTML = `<i class="fa-solid fa-shield-check"></i>`;
+            } else if (score >= 50) {
+                scoreElem.className = "text-3xl font-extrabold text-amber-400 mt-1";
+                iconElem.className = "text-3xl text-amber-400";
+                iconElem.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i>`;
+            } else {
+                scoreElem.className = "text-3xl font-extrabold text-red-500 mt-1";
+                iconElem.className = "text-3xl text-red-500";
+                iconElem.innerHTML = `<i class="fa-solid fa-shield-virus"></i>`;
+            }
+
+            // Update Tab Counts
+            document.getElementById('count-all').textContent = total;
+            document.getElementById('count-vuln').textContent = currentAnalysisResults.filter(r => r.severity !== 'SAFE').length;
+            document.getElementById('count-license').textContent = licenseRisks;
+
+            // Chart.js render
+            renderChart(criticals, outdated, total - criticals);
+        }
+
+        function renderChart(critical, outdated, safe) {
+            const ctx = document.getElementById('riskChart').getContext('2d');
+            
+            if (chartInstance) {
+                chartInstance.destroy();
+            }
+
+            chartInstance = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['고위험 취약점', '버전 업데이트 필요', '안전함'],
+                    datasets: [{
+                        data: [critical, outdated, safe],
+                        backgroundColor: ['#ef4444', '#f59e0b', '#10b981'],
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    cutout: '70%'
+                }
+            });
+        }
+
+        function renderTable() {
+            const tbody = document.getElementById('package-table-body');
+            tbody.innerHTML = '';
+
+            const query = document.getElementById('search-input').value.toLowerCase();
+
+            const filtered = currentAnalysisResults.filter(item => {
+                const matchesSearch = item.name.toLowerCase().includes(query);
+                if (!matchesSearch) return false;
+
+                if (activeFilter === 'vuln') return item.severity !== 'SAFE';
+                if (activeFilter === 'license') return item.licenseRisk === 'HIGH';
+                return true;
+            });
+
+            if (filtered.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="6" class="text-center py-8 text-slate-500">해당 조건에 부합하는 항목이 없습니다.</td></tr>`;
+                return;
+            }
+
+            filtered.forEach(item => {
+                const tr = document.createElement('tr');
+                tr.className = "hover:bg-slate-800/60 transition border-b border-slate-800/50 cursor-pointer";
+                tr.onclick = () => openModal(item);
+
+                // Badge colors
+                let sevBadge = '';
+                if (item.severity === 'CRITICAL') {
+                    sevBadge = `<span class="px-2 py-0.5 rounded text-xs font-bold bg-red-500/20 text-red-400 border border-red-500/30">CRITICAL (${item.score})</span>`;
+                } else if (item.severity === 'HIGH') {
+                    sevBadge = `<span class="px-2 py-0.5 rounded text-xs font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">HIGH (${item.score})</span>`;
+                } else if (item.severity === 'MEDIUM') {
+                    sevBadge = `<span class="px-2 py-0.5 rounded text-xs font-bold bg-yellow-500/20 text-yellow-400 border border-yellow-500/30">MEDIUM (${item.score})</span>`;
+                } else {
+                    sevBadge = `<span class="px-2 py-0.5 rounded text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">SAFE</span>`;
+                }
+
+                let licenseBadge = item.licenseRisk === 'HIGH' 
+                    ? `<span class="px-2 py-0.5 rounded text-xs font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30 flex items-center gap-1 w-fit"><i class="fa-solid fa-triangle-exclamation"></i> ${item.license}</span>`
+                    : `<span class="text-slate-400 font-mono text-xs">${item.license}</span>`;
+
+                let versionDiff = item.installed !== item.latest
+                    ? `<span class="text-amber-400 font-mono font-bold">${item.latest} <i class="fa-solid fa-arrow-up text-xs ml-1"></i></span>`
+                    : `<span class="text-slate-500 font-mono">${item.latest}</span>`;
+
+                tr.innerHTML = `
+                    <td class="py-3.5 px-4 font-semibold text-white flex items-center gap-2">
+                        <i class="fa-solid fa-cube text-slate-500"></i> ${item.name}
+                    </td>
+                    <td class="py-3.5 px-4 font-mono text-slate-300">${item.installed}</td>
+                    <td class="py-3.5 px-4">${versionDiff}</td>
+                    <td class="py-3.5 px-4">${sevBadge}</td>
+                    <td class="py-3.5 px-4">${licenseBadge}</td>
+                    <td class="py-3.5 px-4 text-slate-300 max-w-xs truncate">
+                        ${item.alternative !== 'N/A' ? `<span class="text-emerald-400 font-medium"><i class="fa-solid fa-lightbulb mr-1"></i>${item.alternative}</span>` : `<span class="text-slate-500">-</span>`}
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function filterResults(type) {
+            activeFilter = type;
+            ['all', 'vuln', 'license'].forEach(t => {
+                const btn = document.getElementById(`tab-${t}`);
+                if (t === type) {
+                    btn.className = "px-4 py-2 text-xs sm:text-sm font-medium rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/30";
+                } else {
+                    btn.className = "px-4 py-2 text-xs sm:text-sm font-medium rounded-lg text-slate-400 hover:bg-slate-800 transition";
+                }
+            });
+            renderTable();
+        }
+
+        function searchPackages() {
+            renderTable();
+        }
+
+        // --- Detailed View Modal ---
+        function openModal(item) {
+            document.getElementById('modal-title').innerHTML = `<i class="fa-solid fa-cube text-emerald-400"></i> ${item.name}`;
+            document.getElementById('modal-subtitle').textContent = `설치 버전: v${item.installed}  |  최신 권장: v${item.latest}`;
+
+            const modalContent = document.getElementById('modal-content');
+            modalContent.innerHTML = `
+                <div class="bg-slate-800/80 p-4 rounded-xl border border-slate-700">
+                    <div class="text-xs text-slate-400 font-semibold uppercase mb-1">CVE 식별자 및 보안 위험 수준</div>
+                    <div class="flex items-center gap-3">
+                        <span class="text-lg font-bold ${item.severity !== 'SAFE' ? 'text-red-400' : 'text-emerald-400'}">${item.cve}</span>
+                        <span class="text-xs px-2 py-0.5 rounded font-mono font-bold ${item.severity !== 'SAFE' ? 'bg-red-500/20 text-red-300' : 'bg-emerald-500/20 text-emerald-300'}">${item.severity} (점수: ${item.score})</span>
+                    </div>
+                </div>
+
+                <div class="space-y-1">
+                    <label class="text-xs text-slate-400 font-semibold uppercase">취약점 세부설명</label>
+                    <p class="text-slate-200 bg-slate-950 p-3 rounded-xl border border-slate-800 font-sans leading-relaxed">${item.desc}</p>
+                </div>
+
+                <div class="space-y-1">
+                    <label class="text-xs text-slate-400 font-semibold uppercase">권장 조치 가이드</label>
+                    <div class="bg-emerald-950/40 border border-emerald-500/30 p-3 rounded-xl text-emerald-200">
+                        <i class="fa-solid fa-circle-check text-emerald-400 mr-1.5"></i> ${item.action}
+                    </div>
+                </div>
+
+                ${item.alternative !== 'N/A' ? `
+                <div class="space-y-1">
+                    <label class="text-xs text-slate-400 font-semibold uppercase">대체 추천 모듈 / 라이브러리</label>
+                    <div class="bg-slate-800 p-3 rounded-xl border border-slate-700 text-slate-100 flex items-center gap-2">
+                        <i class="fa-solid fa-arrows-rotate text-blue-400"></i>
+                        <span>${item.alternative}</span>
+                    </div>
+                </div>
+                ` : ''}
+
+                <div class="space-y-1">
+                    <label class="text-xs text-slate-400 font-semibold uppercase">라이선스 감지 및 저작권 유의사항</label>
+                    <div class="bg-slate-950 p-3 rounded-xl border border-slate-800 flex justify-between items-center">
+                        <span class="font-mono text-slate-200 font-bold">${item.license} 라이선스</span>
+                        ${item.licenseRisk === 'HIGH' ? '<span class="text-xs text-purple-400 font-bold bg-purple-900/40 px-2 py-1 rounded">⚠️ GPL 전염성 위험 감지</span>' : '<span class="text-xs text-slate-400">상용 서비스 사용 안전</span>'}
+                    </div>
+                </div>
+            `;
+
+            document.getElementById('detail-modal').classList.remove('hidden');
+        }
+
+        function closeModal() {
+            document.getElementById('detail-modal').classList.add('hidden');
+        }
+
+        // --- Report Export Function ---
+        function downloadReport() {
+            if (!currentAnalysisResults.length) return;
+
+            const reportData = {
+                title: "SecuGuard - 오픈소스 라이브러리 보안 검사 보고서",
+                timestamp: new Date().toISOString(),
+                totalAnalyzed: currentAnalysisResults.length,
+                results: currentAnalysisResults
+            };
+
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(reportData, null, 2));
+            const downloadAnchor = document.createElement('a');
+            downloadAnchor.setAttribute("href", dataStr);
+            downloadAnchor.setAttribute("download", `secuguard_report_${Date.now()}.json`);
+            document.body.appendChild(downloadAnchor);
+            downloadAnchor.click();
+            downloadAnchor.remove();
+
+            showToast('보안 검사 보고서(JSON)가 다운로드되었습니다!');
+        }
+
+        // --- Toast Notification helper ---
+        function showToast(message) {
+            const toast = document.getElementById('toast');
+            const toastMsg = document.getElementById('toast-message');
+            toastMsg.textContent = message;
+            
+            toast.classList.remove('translate-y-20', 'opacity-0', 'pointer-events-none');
+            
+            setTimeout(() => {
+                toast.classList.add('translate-y-20', 'opacity-0', 'pointer-events-none');
+            }, 3000);
+        }
+    </script>
+</body>
+</html>
